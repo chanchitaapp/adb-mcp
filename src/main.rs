@@ -74,7 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let executor = Arc::clone(&executor);
                 match tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async { executor.shell(device, command).await })
+                    tokio::runtime::Handle::current()
+                        .block_on(async { executor.shell(device, command).await })
                 }) {
                     Ok(output) => Ok(json!({
                         "stdout": output.stdout,
@@ -93,17 +94,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let executor = Arc::clone(&executor);
         mcp_server = mcp_server.register_tool(
             "adb_logcat",
-            "Retrieves Android system logs with advanced filtering. Supports keywords, regex, log levels, tags, and exclusions.",
+            "Retrieve Android logs. Prefer 'filter' (native logcat syntax) for accurate results.",
             InputSchema::new()
-                .add_property("device", "string", "Target device ID (optional)", false)
-                .add_property("filter", "string", "Logcat filter expression (optional)", false)
-                .add_property("keywords", "array", "Keyword filters (case-insensitive, optional)", false)
-                .add_property("min_level", "string", "Minimum log level: V/D/I/W/E/F (optional)", false)
-                .add_property("tags", "array", "Specific log tags to filter by (optional)", false)
-                .add_property("exclude", "array", "Patterns to exclude from results (optional)", false)
-                .add_property("regex", "string", "Regex pattern for advanced filtering (optional)", false)
-                .add_property("lines", "number", "Maximum lines to return (default: 50)", false)
-                .to_json(),
+            .add_property("device", "string", "Target device ID (optional)", false)
+            .add_property(
+                "filter",
+                "string",
+                "Logcat filter (RECOMMENDED): 'TAG:LEVEL' (V/D/I/W/E/F). Use '*:S' to silence others. Examples: 'ReactNativeJS:V *:S', 'Hermes:I *:S', '*:E'.",
+                false,
+            )
+            .add_property("keywords", "array", "Case-insensitive substrings (less reliable)", false)
+            .add_property("min_level", "string", "Min level: V/D/I/W/E/F (less reliable)", false)
+            .add_property("tags", "array", "Filter by tags (less reliable)", false)
+            .add_property("exclude", "array", "Exclude patterns", false)
+            .add_property("regex", "string", "Regex filter (case-sensitive)", false)
+            .add_property("lines", "number", "Max lines (default: 50)", false)
+            .to_json(),
             move |args| {
                 let device = args.get("device").and_then(|v| v.as_str());
                 let filter = args.get("filter").and_then(|v| v.as_str());
@@ -225,7 +231,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let executor = Arc::clone(&executor);
                 match tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async { executor.install(device, apk_path).await })
+                    tokio::runtime::Handle::current()
+                        .block_on(async { executor.install(device, apk_path).await })
                 }) {
                     Ok(output) => Ok(json!({
                         "success": output.success,
@@ -269,7 +276,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let executor = Arc::clone(&executor);
 
                 match tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async { executor.pull(device, remote_path, &temp_file).await })
+                    tokio::runtime::Handle::current()
+                        .block_on(async { executor.pull(device, remote_path, &temp_file).await })
                 }) {
                     Ok(_) => {
                         // Read the file
