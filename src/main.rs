@@ -35,8 +35,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             InputSchema::new().to_json(),
             move |_args| {
                 let executor = Arc::clone(&executor);
-                let rt = tokio::runtime::Handle::current();
-                match rt.block_on(async { executor.list_devices().await }) {
+                match tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async { executor.list_devices().await })
+                }) {
                     Ok(devices) => {
                         let device_list: Vec<_> = devices.iter().map(|d| {
                             json!({
@@ -72,8 +73,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let device = args.get("device").and_then(|v| v.as_str());
 
                 let executor = Arc::clone(&executor);
-                let rt = tokio::runtime::Handle::current();
-                match rt.block_on(async { executor.shell(device, command).await }) {
+                match tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async { executor.shell(device, command).await })
+                }) {
                     Ok(output) => Ok(json!({
                         "stdout": output.stdout,
                         "stderr": output.stderr,
@@ -108,9 +110,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(50) as u32;
 
                 let executor = Arc::clone(&executor);
-                let rt = tokio::runtime::Handle::current();
 
-                match rt.block_on(async { executor.logcat(device, filter, Some(lines)).await }) {
+                match tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async { executor.logcat(device, filter, Some(lines)).await })
+                }) {
                     Ok(output) => {
                         let mut filter_chain = LogcatFilterChain::new();
                         let mut applied_filters = vec![];
@@ -221,8 +224,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let device = args.get("device").and_then(|v| v.as_str());
 
                 let executor = Arc::clone(&executor);
-                let rt = tokio::runtime::Handle::current();
-                match rt.block_on(async { executor.install(device, apk_path).await }) {
+                match tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async { executor.install(device, apk_path).await })
+                }) {
                     Ok(output) => Ok(json!({
                         "success": output.success,
                         "stdout": output.stdout,
@@ -263,9 +267,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let temp_file = format!("/tmp/adb-mcp-pull-{}", uuid::Uuid::new_v4());
                 let executor = Arc::clone(&executor);
-                let rt = tokio::runtime::Handle::current();
 
-                match rt.block_on(async { executor.pull(device, remote_path, &temp_file).await }) {
+                match tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async { executor.pull(device, remote_path, &temp_file).await })
+                }) {
                     Ok(_) => {
                         // Read the file
                         match std::fs::read(&temp_file) {
@@ -313,8 +318,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let device = args.get("device").and_then(|v| v.as_str());
 
                 let executor = Arc::clone(&executor);
-                let rt = tokio::runtime::Handle::current();
-                match rt.block_on(async { executor.am(device, subcommand, am_args).await }) {
+                match tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async { executor.am(device, subcommand, am_args).await })
+                }) {
                     Ok(output) => {
                         Ok(json!({
                             "success": output.success,
@@ -347,8 +353,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let device = args.get("device").and_then(|v| v.as_str());
 
                 let executor = Arc::clone(&executor);
-                let rt = tokio::runtime::Handle::current();
-                match rt.block_on(async { executor.pm(device, subcommand, pm_args).await }) {
+                match tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async { executor.pm(device, subcommand, pm_args).await })
+                }) {
                     Ok(output) => {
                         Ok(json!({
                             "success": output.success,
