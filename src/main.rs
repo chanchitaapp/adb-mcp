@@ -5,20 +5,19 @@ use adb_mcp::mcp::server::InputSchema;
 use adb_mcp::mcp::McpServer;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use log::error;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tracing::error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env().add_directive("info".parse()?),
-        )
-        .with_writer(std::io::stderr)
-        .init();
+    // Initialize logging
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Info)
+        .format_timestamp(None)
+        .target(env_logger::Target::Stderr)
+        .try_init()?;
 
     // Create ADB executor
     let adb_path = std::env::var("ADB_PATH").ok();
@@ -389,7 +388,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         error!("Failed to write response: {}", e);
                         break;
                     }
-                    if let Err(e) = stdout.write_all(b"\n").await {
+                    if let Err(e) = stdout.write_all(&b"\n"[..]).await {
                         error!("Failed to write newline: {}", e);
                         break;
                     }

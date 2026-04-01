@@ -2,7 +2,7 @@ use crate::adb::types::{CommandOutput, Device};
 use crate::errors::{AdbError, Result};
 use std::process::Stdio;
 use tokio::process::Command;
-use tracing::{debug, warn};
+use log::{debug, warn};
 
 #[derive(Clone)]
 pub struct AdbExecutor {

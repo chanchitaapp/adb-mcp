@@ -1,7 +1,7 @@
 use super::protocol::*;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use tracing::{debug, error, info};
+use log::{debug, error, info};
 
 type ToolHandler = Box<dyn Fn(Value) -> std::result::Result<Value, String> + Send>;
 

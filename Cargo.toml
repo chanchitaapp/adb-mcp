@@ -19,8 +19,8 @@ chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 anyhow = "1.0"
 thiserror = "1.0"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+log = "0.4"
+env_logger = "0.11"
 base64 = "0.22"
 uuid = { version = "1.10", features = ["v4", "serde"] }
 async-trait = "0.1"
