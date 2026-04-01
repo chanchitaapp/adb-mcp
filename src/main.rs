@@ -1,6 +1,7 @@
 use adb_mcp::adb::AdbExecutor;
 use adb_mcp::filters::logcat::LogLevel;
 use adb_mcp::filters::LogcatFilterChain;
+use adb_mcp::mcp::cursor::LogcatCursorManager;
 use adb_mcp::mcp::server::InputSchema;
 use adb_mcp::mcp::McpServer;
 use base64::engine::general_purpose::STANDARD;
@@ -22,6 +23,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create ADB executor
     let adb_path = std::env::var("ADB_PATH").ok();
     let executor = Arc::new(AdbExecutor::new(adb_path));
+
+    // Create logcat cursor manager (30 min timeout, 5 min cleanup interval)
+    let cursor_manager = Arc::new(LogcatCursorManager::new(1800, 300));
 
     // Create MCP server
     let mut mcp_server = McpServer::new("adb-mcp", "0.1.0");
@@ -92,11 +96,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ===== adb_logcat tool =====
     {
         let executor = Arc::clone(&executor);
+        let cursor_mgr = Arc::clone(&cursor_manager);
         mcp_server = mcp_server.register_tool(
             "adb_logcat",
-            "Retrieve Android logs. Prefer 'filter' (native logcat syntax) for accurate results.",
+            "Retrieve Android logs with optional cursor-based pagination. Prefer 'filter' (native logcat syntax) for accurate results.",
             InputSchema::new()
-            .add_property("device", "string", "Target device ID (optional)", false)
+            .add_property("cursor_id", "string", "Cursor ID to fetch next page (if omitted, starts a new session)", false)
+            .add_property("device", "string", "Target device ID (optional, required for new sessions)", false)
             .add_property(
                 "filter",
                 "string",
@@ -108,9 +114,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .add_property("tags", "array", "Filter by tags (less reliable)", false)
             .add_property("exclude", "array", "Exclude patterns", false)
             .add_property("regex", "string", "Regex filter (case-sensitive)", false)
-            .add_property("lines", "number", "Max lines (default: 50)", false)
+            .add_property("lines", "number", "Page size (default: 50)", false)
             .to_json(),
             move |args| {
+                let cursor_id = args.get("cursor_id").and_then(|v| v.as_str());
+                let cursor_mgr = Arc::clone(&cursor_mgr);
+
+                // If cursor_id is provided, fetch next page
+                if let Some(cid) = cursor_id {
+                    return match cursor_mgr.get_next_page(cid) {
+                        Ok((page, cursor, has_more, current_offset, total)) => {
+                            let logs = page.join("\n");
+                            Ok(json!({
+                                "logs": logs,
+                                "line_count": page.len(),
+                                "cursor_id": cursor,
+                                "has_more": has_more,
+                                "current_offset": current_offset,
+                                "total_lines": total,
+                            }))
+                        }
+                        Err(e) => Err(e),
+                    };
+                }
+
+                // Start new session
                 let device = args.get("device").and_then(|v| v.as_str());
                 let filter = args.get("filter").and_then(|v| v.as_str());
                 let lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(50) as u32;
@@ -122,7 +150,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }) {
                     Ok(output) => {
                         let mut filter_chain = LogcatFilterChain::new();
-                        let mut applied_filters = vec![];
 
                         // Add keyword filter
                         if let Some(keywords_val) = args.get("keywords") {
@@ -133,7 +160,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .collect();
                                 if !keywords.is_empty() {
                                     filter_chain = filter_chain.add_keyword_filter(keywords, false);
-                                    applied_filters.push("keyword".to_string());
                                 }
                             }
                         }
@@ -142,7 +168,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(level_str) = args.get("min_level").and_then(|v| v.as_str()) {
                             if let Some(level) = LogLevel::from_str(level_str) {
                                 filter_chain = filter_chain.add_level_filter(level);
-                                applied_filters.push(format!("min_level:{}", level_str));
                             }
                         }
 
@@ -155,7 +180,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .collect();
                                 if !tags.is_empty() {
                                     filter_chain = filter_chain.add_tag_filter(tags);
-                                    applied_filters.push("tags".to_string());
                                 }
                             }
                         }
@@ -169,7 +193,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .collect();
                                 if !patterns.is_empty() {
                                     filter_chain = filter_chain.add_exclude_filter(patterns);
-                                    applied_filters.push("exclude".to_string());
                                 }
                             }
                         }
@@ -190,7 +213,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         })
                                         .collect::<Vec<_>>()
                                         .join("\n");
-                                    applied_filters.push(format!("regex:{}", regex_str));
                                 }
                                 Err(_) => {
                                     eprintln!("[WARN] Invalid regex pattern: {}", regex_str);
@@ -198,12 +220,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
 
-                        let line_count = filtered_output.lines().count();
+                        let page_size = lines as usize;
+                        let (page, cursor_id, has_more, current_offset, total) = cursor_mgr.get_first_page(
+                            device.map(|s| s.to_string()),
+                            filter.map(|s| s.to_string()),
+                            filtered_output,
+                            page_size,
+                        );
+
+                        let logs = page.join("\n");
 
                         Ok(json!({
-                            "logs": filtered_output,
-                            "line_count": line_count,
-                            "applied_filters": applied_filters,
+                            "logs": logs,
+                            "line_count": page.len(),
+                            "cursor_id": cursor_id,
+                            "has_more": has_more,
+                            "current_offset": current_offset,
+                            "total_lines": total,
                         }))
                     }
                     Err(e) => Err(e.to_string()),

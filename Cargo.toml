@@ -24,6 +24,7 @@ env_logger = "0.11"
 base64 = "0.22"
 uuid = { version = "1.10", features = ["v4", "serde"] }
 async-trait = "0.1"
+dashmap = "5.5"
 
 [dev-dependencies]
 mockall = "0.12"

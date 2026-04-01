@@ -3,6 +3,7 @@ use serde_json::Value;
 
 pub mod protocol;
 pub mod server;
+pub mod cursor;
 
 pub use protocol::{JsonRpcMessage, JsonRpcRequest, JsonRpcResponse};
 pub use server::McpServer;
