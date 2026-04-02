@@ -120,10 +120,12 @@ impl AdbExecutor {
         args.push("logcat");
         args.push("-d"); // Dump logcat and exit
 
-        // Add filter if provided
+        // Add filter if provided (split into separate arguments for logcat syntax)
         if let Some(f) = filter {
-            let filter_args: Vec<&str> = f.split_whitespace().collect();
-            args.extend(filter_args);
+            // For filters like "TAG:LEVEL *:S", we need to split them as separate arguments
+            // but preserve the format expected by adb logcat
+            let filter_parts: Vec<&str> = f.split_whitespace().collect();
+            args.extend(filter_parts);
         }
 
         let mut output = self.execute(args).await?;

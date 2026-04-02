@@ -99,14 +99,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let cursor_mgr = Arc::clone(&cursor_manager);
         mcp_server = mcp_server.register_tool(
             "adb_logcat",
-            "Retrieve Android logs with optional cursor-based pagination. Prefer 'filter' (native logcat syntax) for accurate results.",
+            "Retrieve Android logs with optional cursor-based pagination and filtering.",
             InputSchema::new()
             .add_property("cursor_id", "string", "Cursor ID to fetch next page (if omitted, starts a new session)", false)
             .add_property("device", "string", "Target device ID (optional, required for new sessions)", false)
             .add_property(
                 "filter",
                 "string",
-                "Logcat filter (RECOMMENDED): 'TAG:LEVEL' (V/D/I/W/E/F). Use '*:S' to silence others. Examples: 'ReactNativeJS:V *:S', 'Hermes:I *:S', '*:E'.",
+                "Native logcat filter by TAG:LEVEL (V/D/I/W/E/F). Examples: 'ReactNativeJS:V *:S', 'Hermes:I *:S', '*:E'. Note: this filters by logcat TAG names, not package names. For package-based filtering, use 'regex' parameter instead.",
                 false,
             )
             .add_property("keywords", "array", "Case-insensitive substrings (less reliable)", false)
