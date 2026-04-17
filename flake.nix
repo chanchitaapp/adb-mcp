@@ -42,7 +42,7 @@
 
         meta = with pkgs.lib; {
           description = "MCP server for ADB interactions";
-          homepage = "https://github.com/chanchitaapp/adb-mcp";
+          homepage = "https://github.com/cuentacero/adb-mcp";
           license = licenses.mit;
           mainProgram = "adb-mcp";
         };
