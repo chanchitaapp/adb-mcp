@@ -431,18 +431,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(_) => {
                 let line_trimmed = line.trim();
                 if !line_trimmed.is_empty() {
-                    let response = mcp_server.handle_message(line_trimmed.to_string()).await;
-                    if let Err(e) = stdout.write_all(response.as_bytes()).await {
-                        error!("Failed to write response: {}", e);
-                        break;
-                    }
-                    if let Err(e) = stdout.write_all(&b"\n"[..]).await {
-                        error!("Failed to write newline: {}", e);
-                        break;
-                    }
-                    if let Err(e) = stdout.flush().await {
-                        error!("Failed to flush stdout: {}", e);
-                        break;
+                    if let Some(response) =
+                        mcp_server.handle_message(line_trimmed.to_string()).await
+                    {
+                        if let Err(e) = stdout.write_all(response.as_bytes()).await {
+                            error!("Failed to write response: {}", e);
+                            break;
+                        }
+                        if let Err(e) = stdout.write_all(&b"\n"[..]).await {
+                            error!("Failed to write newline: {}", e);
+                            break;
+                        }
+                        if let Err(e) = stdout.flush().await {
+                            error!("Failed to flush stdout: {}", e);
+                            break;
+                        }
                     }
                 }
             }

@@ -1,7 +1,7 @@
 use super::protocol::*;
+use log::{debug, error, info};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use log::{debug, error, info};
 
 type ToolHandler = Box<dyn Fn(Value) -> std::result::Result<Value, String> + Send>;
 
@@ -43,48 +43,65 @@ impl McpServer {
         self
     }
 
-    pub async fn handle_message(&self, message: String) -> String {
+    pub async fn handle_message(&self, message: String) -> Option<String> {
         match serde_json::from_str::<JsonRpcRequest>(&message) {
             Ok(request) => {
-                let response = self.handle_request(&request).await;
-                serde_json::to_string(&response).unwrap_or_else(|_| {
+                let response = self.handle_request(&request).await?;
+                Some(serde_json::to_string(&response).unwrap_or_else(|_| {
+                    let id = request.id.unwrap_or(Value::Null);
                     serde_json::to_string(&JsonRpcResponse::internal_error(
-                        request.id,
+                        id,
                         "Failed to serialize response".to_string(),
                     ))
                     .unwrap()
-                })
+                }))
             }
             Err(e) => {
                 error!("Failed to parse JSON-RPC request: {}", e);
-                serde_json::to_string(&json!({
-                    "jsonrpc": "2.0",
-                    "error": {
-                        "code": -32700,
-                        "message": "Parse error"
-                    },
-                    "id": Value::Null
-                }))
-                .unwrap()
+                Some(
+                    serde_json::to_string(&json!({
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32700,
+                            "message": "Parse error"
+                        },
+                        "id": Value::Null
+                    }))
+                    .unwrap(),
+                )
             }
         }
     }
 
-    async fn handle_request(&self, request: &JsonRpcRequest) -> JsonRpcResponse {
-        debug!("Handling request: {} (id: {})", request.method, request.id);
+    async fn handle_request(&self, request: &JsonRpcRequest) -> Option<JsonRpcResponse> {
+        let Some(id) = request.id.clone() else {
+            self.handle_notification(request);
+            return None;
+        };
 
-        match request.method.as_str() {
-            "initialize" => self.handle_initialize(request),
-            "tools/list" => self.handle_list_tools(request),
-            "tools/call" => self.handle_call_tool(request).await,
+        debug!("Handling request: {} (id: {})", request.method, id);
+
+        let response = match request.method.as_str() {
+            "initialize" => self.handle_initialize(id),
+            "tools/list" => self.handle_list_tools(id),
+            "tools/call" => self.handle_call_tool(id, request).await,
             _ => {
                 debug!("Unknown method: {}", request.method);
-                JsonRpcResponse::method_not_found(request.id.clone())
+                JsonRpcResponse::method_not_found(id)
             }
+        };
+
+        Some(response)
+    }
+
+    fn handle_notification(&self, request: &JsonRpcRequest) {
+        match request.method.as_str() {
+            "notifications/initialized" => info!("Client initialization complete"),
+            _ => debug!("Ignoring notification: {}", request.method),
         }
     }
 
-    fn handle_initialize(&self, request: &JsonRpcRequest) -> JsonRpcResponse {
+    fn handle_initialize(&self, id: Value) -> JsonRpcResponse {
         info!("Client initialized");
 
         let response = InitializeResponse {
@@ -100,22 +117,18 @@ impl McpServer {
             },
         };
 
-        JsonRpcResponse::success(request.id.clone(), serde_json::to_value(response).unwrap())
+        JsonRpcResponse::success(id, serde_json::to_value(response).unwrap())
     }
 
-    fn handle_list_tools(&self, request: &JsonRpcRequest) -> JsonRpcResponse {
-        let tools: Vec<ToolDefinition> = self
-            .tools
-            .values()
-            .map(|(def, _)| def.clone())
-            .collect();
+    fn handle_list_tools(&self, id: Value) -> JsonRpcResponse {
+        let tools: Vec<ToolDefinition> = self.tools.values().map(|(def, _)| def.clone()).collect();
 
         let response = ListToolsResponse { tools };
 
-        JsonRpcResponse::success(request.id.clone(), serde_json::to_value(response).unwrap())
+        JsonRpcResponse::success(id, serde_json::to_value(response).unwrap())
     }
 
-    async fn handle_call_tool(&self, request: &JsonRpcRequest) -> JsonRpcResponse {
+    async fn handle_call_tool(&self, id: Value, request: &JsonRpcRequest) -> JsonRpcResponse {
         let call_req: Result<CallToolRequest, _> = serde_json::from_value(request.params.clone());
 
         match call_req {
@@ -133,10 +146,7 @@ impl McpServer {
                                 is_error: None,
                             };
 
-                            JsonRpcResponse::success(
-                                request.id.clone(),
-                                serde_json::to_value(response).unwrap(),
-                            )
+                            JsonRpcResponse::success(id, serde_json::to_value(response).unwrap())
                         }
                         Err(e) => {
                             error!("Tool execution failed: {}", e);
@@ -145,22 +155,16 @@ impl McpServer {
                                 is_error: Some(true),
                             };
 
-                            JsonRpcResponse::success(
-                                request.id.clone(),
-                                serde_json::to_value(response).unwrap(),
-                            )
+                            JsonRpcResponse::success(id, serde_json::to_value(response).unwrap())
                         }
                     }
                 } else {
-                    JsonRpcResponse::invalid_params(
-                        request.id.clone(),
-                        format!("Tool not found: {}", call.name),
-                    )
+                    JsonRpcResponse::invalid_params(id, format!("Tool not found: {}", call.name))
                 }
             }
             Err(e) => {
                 error!("Invalid tool call parameters: {}", e);
-                JsonRpcResponse::invalid_params(request.id.clone(), e.to_string())
+                JsonRpcResponse::invalid_params(id, e.to_string())
             }
         }
     }
